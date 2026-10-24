@@ -1,0 +1,493 @@
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id            String         @id @default(uuid()) @db.Uuid
+  phone         String         @unique @db.VarChar(15)
+  name          String?        @db.VarChar(100)
+  email         String?        @db.VarChar(100)
+  dob           DateTime?      @map("dob") @db.Timestamptz(6)
+  gender        String?        @db.VarChar(30)
+  // Built-in avatar character chosen in the app (D-024); null = initials. No photos.
+  avatarId      String?        @map("avatar_id") @db.VarChar(30)
+  isActive      Boolean        @default(true) @map("is_active")
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  addresses     UserAddress[]
+  orders        Order[]
+  deviceTokens  DeviceToken[]
+  refreshTokens RefreshToken[]
+  cartItems     CartItem[]
+  favorites     Favorite[]
+  notifications Notification[]
+
+  @@map("users")
+}
+
+model UserAddress {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String   @db.VarChar(50)
+  addressLine String   @map("address_line") @db.Text
+  city        String   @db.VarChar(100)
+  state       String   @db.VarChar(100)
+  pincode     String   @db.VarChar(10)
+  latitude    Decimal  @db.Decimal(10, 8)
+  longitude   Decimal  @db.Decimal(11, 8)
+  isDefault   Boolean  @default(false) @map("is_default")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  orders      Order[]
+
+  @@map("user_addresses")
+}
+
+model Store {
+  id                    String                 @id @default(uuid()) @db.Uuid
+  storeId               String                 @unique @map("store_id") @db.VarChar(50)
+  name                  String                 @db.VarChar(100)
+  address               String                 @db.Text
+  city                  String                 @db.VarChar(100)
+  state                 String                 @db.VarChar(100)
+  pincode               String                 @db.VarChar(10)
+  latitude              Decimal                @db.Decimal(10, 8)
+  longitude             Decimal                @db.Decimal(11, 8)
+  deliveryRadiusKm      Decimal                @default(10.00) @map("delivery_radius_km") @db.Decimal(5, 2)
+  phone                 String                 @db.VarChar(15)
+  email                 String?                @db.VarChar(100)
+  openingTime           String                 @map("opening_time") @db.VarChar(10) // HH:MM
+  closingTime           String                 @map("closing_time") @db.VarChar(10) // HH:MM (pickup counter closes)
+  // D-015: when false, the global timings in DeliverySettings apply
+  useCustomTimings      Boolean                @default(false) @map("use_custom_timings")
+  orderCutoffTime       String                 @default("19:00") @map("order_cutoff_time") @db.VarChar(10) // HH:MM
+  weeklyClosedDays      Int[]                  @default([]) @map("weekly_closed_days") // 0 = Sunday … 6 = Saturday
+  isActive              Boolean                @default(true) @map("is_active")
+  createdAt             DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime               @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  managers              StoreManager[]
+  inventory             StoreInventory[]
+  orders                Order[]
+  inventoryTransactions InventoryTransaction[]
+  holidays              StoreHoliday[]
+
+  @@map("stores")
+}
+
+model AdminUser {
+  id                    String                 @id @default(uuid()) @db.Uuid
+  email                 String                 @unique @db.VarChar(100)
+  passwordHash          String                 @map("password_hash") @db.VarChar(255)
+  name                  String                 @db.VarChar(100)
+  role                  AdminRole
+  isActive              Boolean                @default(true) @map("is_active")
+  createdAt             DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime               @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  managers              StoreManager[]
+  auditLogs             AuditLog[]
+  deviceTokens          DeviceToken[]
+  refreshTokens         RefreshToken[]
+  inventoryTransactions InventoryTransaction[]
+
+  @@map("admin_users")
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  STORE_MANAGER
+}
+
+model StoreManager {
+  id          String    @id @default(uuid()) @db.Uuid
+  adminUserId String    @map("admin_user_id") @db.Uuid
+  adminUser   AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+  storeId     String    @map("store_id") @db.Uuid
+  store       Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  assignedAt  DateTime  @default(now()) @map("assigned_at") @db.Timestamptz(6)
+
+  @@unique([adminUserId, storeId])
+  @@map("store_managers")
+}
+
+model Category {
+  id           String    @id @default(uuid()) @db.Uuid
+  name         String    @unique @db.VarChar(100)
+  description  String?   @db.Text
+  imageUrl     String?   @map("image_url") @db.Text
+  displayOrder Int       @default(0) @map("display_order")
+  isActive     Boolean   @default(true) @map("is_active")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  products     Product[]
+
+  @@map("categories")
+}
+
+model Product {
+  id                    String                 @id @default(uuid()) @db.Uuid
+  name                  String                 @db.VarChar(100)
+  description           String?                @db.Text
+  imageUrl              String?                @map("image_url") @db.Text
+  categoryId            String                 @map("category_id") @db.Uuid
+  category              Category               @relation(fields: [categoryId], references: [id])
+  unit                  ProductUnit            @default(KG)
+  price                 Decimal                @db.Decimal(10, 2)
+  mrp                   Decimal?               @db.Decimal(10, 2)
+  /// Purchase quantity rules in `unit` (D-012). Set together, or all null = not configured.
+  minQuantity           Decimal?               @map("min_quantity") @db.Decimal(10, 3)
+  maxQuantity           Decimal?               @map("max_quantity") @db.Decimal(10, 3)
+  quantityStep          Decimal?               @map("quantity_step") @db.Decimal(10, 3)
+  isActive              Boolean                @default(true) @map("is_active")
+  createdAt             DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime               @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  inventory             StoreInventory[]
+  orderItems            OrderItem[]
+  cartItems             CartItem[]
+  favorites             Favorite[]
+  inventoryTransactions InventoryTransaction[]
+
+  @@map("products")
+}
+
+enum ProductUnit {
+  KG
+  GRAM
+  PIECE
+  PACK
+  DOZEN
+}
+
+model StoreInventory {
+  id                String   @id @default(uuid()) @db.Uuid
+  storeId           String   @map("store_id") @db.Uuid
+  store             Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  productId         String   @map("product_id") @db.Uuid
+  product           Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  stockQuantity     Decimal  @default(0.000) @map("stock_quantity") @db.Decimal(10, 3)
+  lowStockThreshold Decimal  @default(5.000) @map("low_stock_threshold") @db.Decimal(10, 3)
+  isAvailable       Boolean  @default(true) @map("is_available")
+  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([storeId, productId])
+  @@map("store_inventory")
+}
+
+model Order {
+  id                      String          @id @default(uuid()) @db.Uuid
+  orderNumber             String          @unique @map("order_number") @db.VarChar(30)
+  userId                  String          @map("user_id") @db.Uuid
+  user                    User            @relation(fields: [userId], references: [id])
+  storeId                 String          @map("store_id") @db.Uuid
+  store                   Store           @relation(fields: [storeId], references: [id])
+  fulfillmentType         FulfillmentType @map("fulfillment_type")
+  addressId               String?         @map("address_id") @db.Uuid
+  address                 UserAddress?    @relation(fields: [addressId], references: [id])
+  // P1-02: copy of the delivery address at checkout; survives address edits/deletion
+  deliveryAddressSnapshot Json?           @map("delivery_address_snapshot")
+  subtotal                Decimal         @db.Decimal(10, 2)
+  deliveryFee             Decimal         @map("delivery_fee") @db.Decimal(10, 2)
+  codCharge               Decimal         @default(0.00) @map("cod_charge") @db.Decimal(10, 2)
+  discount                Decimal         @default(0.00) @db.Decimal(10, 2)
+  total                   Decimal         @db.Decimal(10, 2)
+  paymentMethod           PaymentMethod   @map("payment_method")
+  paymentStatus           PaymentStatus   @default(PENDING) @map("payment_status")
+  orderStatus             OrderStatus     @default(PLACED) @map("order_status")
+  createdAt               DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  // Client-generated key for one checkout attempt: a retried request returns the same order
+  idempotencyKey          String?         @map("idempotency_key") @db.VarChar(64)
+  items                   OrderItem[]
+  payments                Payment[]
+  refunds                 Refund[]
+
+  @@unique([userId, idempotencyKey])
+  @@map("orders")
+}
+
+enum FulfillmentType {
+  DELIVERY
+  PICKUP
+}
+
+enum PaymentMethod {
+  COD
+  ONLINE
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum OrderStatus {
+  PLACED
+  CONFIRMED
+  PREPARING
+  READY_FOR_PICKUP
+  PICKED_UP
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+}
+
+model OrderItem {
+  id          String      @id @default(uuid()) @db.Uuid
+  orderId     String      @map("order_id") @db.Uuid
+  order       Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId   String      @map("product_id") @db.Uuid
+  product     Product     @relation(fields: [productId], references: [id])
+  productName String      @default("Unknown") @map("product_name") @db.VarChar(100)
+  unit        ProductUnit @default(KG)
+  quantity    Decimal     @db.Decimal(10, 3)
+  unitPrice   Decimal     @map("unit_price") @db.Decimal(10, 2)
+  totalPrice  Decimal     @map("total_price") @db.Decimal(10, 2)
+
+  @@map("order_items")
+}
+
+model Payment {
+  id                  String          @id @default(uuid()) @db.Uuid
+  orderId             String          @map("order_id") @db.Uuid
+  order               Order           @relation(fields: [orderId], references: [id])
+  provider            PaymentProvider @default(CASHFREE)
+  // The order id sent to the gateway (our order id for Cashfree)
+  gatewayOrderId      String          @map("gateway_order_id") @db.VarChar(100)
+  gatewayPaymentId    String?         @map("gateway_payment_id") @db.VarChar(100)
+  // upi / credit_card / net_banking / wallet … as reported by the gateway
+  paymentMethodDetail String?         @map("payment_method_detail") @db.VarChar(50)
+  failureReason       String?         @map("failure_reason") @db.Text
+  amount              Decimal         @db.Decimal(10, 2)
+  status              String          @db.VarChar(50) // PENDING | PAID | FAILED
+  createdAt           DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  refunds             Refund[]
+
+  @@unique([provider, gatewayOrderId])
+  @@map("payments")
+}
+
+enum PaymentProvider {
+  CASHFREE
+}
+
+/// Refund of an online payment when the store cancels a paid order (D-014). The id is also the
+/// gateway refund id, so a retried refund request can never pay out twice.
+model Refund {
+  id              String       @id @default(uuid()) @db.Uuid
+  orderId         String       @map("order_id") @db.Uuid
+  order           Order        @relation(fields: [orderId], references: [id])
+  paymentId       String       @map("payment_id") @db.Uuid
+  payment         Payment      @relation(fields: [paymentId], references: [id])
+  gatewayRefundId String?      @map("gateway_refund_id") @db.VarChar(100)
+  amount          Decimal      @db.Decimal(10, 2)
+  status          RefundStatus @default(PENDING)
+  reason          String?      @db.Text
+  failureReason   String?      @map("failure_reason") @db.Text
+  createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([orderId])
+  @@index([status])
+  @@map("refunds")
+}
+
+enum RefundStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+model DeviceToken {
+  id          String     @id @default(uuid()) @db.Uuid
+  userId      String?    @map("user_id") @db.Uuid
+  user        User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  adminUserId String?    @map("admin_user_id") @db.Uuid
+  adminUser   AdminUser? @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+  token       String     @unique @db.Text
+  platform    Platform
+  updatedAt   DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("device_tokens")
+}
+
+enum Platform {
+  ANDROID
+  IOS
+  WEB
+}
+
+model DeliverySettings {
+  id                    String   @id @default(uuid()) @db.Uuid
+  deliveryEnabled       Boolean  @default(true) @map("delivery_enabled")
+  deliveryFee           Decimal  @default(30.00) @map("delivery_fee") @db.Decimal(10, 2)
+  freeDeliveryThreshold Decimal  @default(200.00) @map("free_delivery_threshold") @db.Decimal(10, 2)
+  minimumOrderAmount    Decimal  @default(199.00) @map("minimum_order_amount") @db.Decimal(10, 2)
+  codEnabled            Boolean  @default(true) @map("cod_enabled")
+  codCharge             Decimal  @default(20.00) @map("cod_charge") @db.Decimal(10, 2)
+  minimumCodOrderAmount Decimal  @default(100.00) @map("minimum_cod_order_amount") @db.Decimal(10, 2)
+  maximumCodOrderAmount Decimal  @default(5000.00) @map("maximum_cod_order_amount") @db.Decimal(10, 2)
+  pickupCodEnabled      Boolean  @default(true) @map("pickup_cod_enabled")
+  // D-015 global store timings (HH:MM, India time); stores may override them
+  storeOpeningTime      String   @default("09:00") @map("store_opening_time") @db.VarChar(10)
+  orderCutoffTime       String   @default("19:00") @map("order_cutoff_time") @db.VarChar(10)
+  pickupClosingTime     String   @default("21:00") @map("pickup_closing_time") @db.VarChar(10)
+  weeklyClosedDays      Int[]    @default([]) @map("weekly_closed_days") // 0 = Sunday … 6 = Saturday
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("delivery_settings")
+}
+
+/// D-015: a closed day for one store, or for all stores when storeId is null.
+model StoreHoliday {
+  id        String   @id @default(uuid()) @db.Uuid
+  storeId   String?  @map("store_id") @db.Uuid
+  store     Store?   @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  date      DateTime @db.Date
+  note      String?  @db.VarChar(100)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([date])
+  @@map("store_holidays")
+}
+
+model Banner {
+  id           String   @id @default(uuid()) @db.Uuid
+  title        String?  @db.VarChar(100)
+  imageUrl     String   @map("image_url") @db.Text
+  displayOrder Int      @default(0) @map("display_order")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("banners")
+}
+
+model AuditLog {
+  id          String     @id @default(uuid()) @db.Uuid
+  adminUserId String?    @map("admin_user_id") @db.Uuid
+  adminUser   AdminUser? @relation(fields: [adminUserId], references: [id], onDelete: SetNull)
+  action      String     @db.VarChar(100)
+  details     String?    @db.Text
+  createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("audit_logs")
+}
+
+model CartItem {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String   @map("product_id") @db.Uuid
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  quantity  Decimal  @db.Decimal(10, 3)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([userId, productId])
+  @@map("cart_items")
+}
+
+model Favorite {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String   @map("product_id") @db.Uuid
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([userId, productId])
+  @@map("user_favorites")
+}
+
+enum InventoryTransactionType {
+  STOCK_ADDED
+  STOCK_REMOVED
+  STOCK_ADJUSTED
+  ORDER_DEDUCTION
+  ORDER_CANCELLATION_RESTORE
+}
+
+model InventoryTransaction {
+  id                 String                   @id @default(uuid()) @db.Uuid
+  storeId            String                   @map("store_id") @db.Uuid
+  store              Store                    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  productId          String                   @map("product_id") @db.Uuid
+  product            Product                  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  previousQuantity   Decimal                  @map("previous_quantity") @db.Decimal(10, 3)
+  changeQuantity     Decimal                  @map("change_quantity") @db.Decimal(10, 3)
+  newQuantity        Decimal                  @map("new_quantity") @db.Decimal(10, 3)
+  type               InventoryTransactionType
+  reason             String?                  @db.Text
+  performedByAdminId String?                  @map("performed_by_admin_id") @db.Uuid
+  performedByAdmin   AdminUser?               @relation(fields: [performedByAdminId], references: [id])
+  createdAt          DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("inventory_transactions")
+}
+
+model DailyOrderSequence {
+  dateKey   String   @id @map("date_key") @db.VarChar(6)
+  lastSeq   Int      @default(0) @map("last_seq")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("daily_order_sequences")
+}
+
+model Notification {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String   @db.VarChar(150)
+  body        String   @db.Text
+  type        String   @default("GENERAL") @db.VarChar(50)
+  orderId     String?  @map("order_id") @db.Uuid
+  orderNumber String?  @map("order_number") @db.VarChar(50)
+  tag         String?  @db.VarChar(50)
+  actionText  String?  @map("action_text") @db.VarChar(100)
+  promoCode   String?  @map("promo_code") @db.VarChar(50)
+  isRead      Boolean  @default(false) @map("is_read")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([userId])
+  @@index([userId, isRead])
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("notifications")
+}
+
+model SupportedPincode {
+  id        String   @id @default(uuid()) @db.Uuid
+  pincode   String   @unique @db.VarChar(10)
+  city      String   @default("Rajkot") @db.VarChar(100)
+  state     String   @default("Gujarat") @db.VarChar(100)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("supported_pincodes")
+}
+
+// P1-08: server-side record of issued refresh tokens so sessions can be revoked (logout, deactivation)
+model RefreshToken {
+  id           String     @id @default(uuid()) @db.Uuid
+  userId       String?    @map("user_id") @db.Uuid
+  user         User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  adminUserId  String?    @map("admin_user_id") @db.Uuid
+  adminUser    AdminUser? @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+  expiresAt    DateTime   @map("expires_at") @db.Timestamptz(6)
+  revokedAt    DateTime?  @map("revoked_at") @db.Timestamptz(6)
+  // Set when this token was rotated: the session that replaced it (reuse detection)
+  replacedById String?    @map("replaced_by_id") @db.Uuid
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([userId])
+  @@index([adminUserId])
+  @@map("refresh_tokens")
+}
